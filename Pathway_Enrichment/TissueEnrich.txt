@@ -1,0 +1,75 @@
+library(TissueEnrich)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+
+##1. Tissue enrichment analysis for diseases with significant proteins##
+file_list <- list.files(path=path_to_files, pattern="*.csv", full.names=T)
+
+for (i in 1:length(file_list)) {
+  data <- read.csv(file_list[i])
+
+  file_name <- file_list[i]
+  base_name <- basename(file_name)
+  input_name <- tools::file_path_sans_ext(base_name)
+
+  vector = (data$pval_raw)*2920*406 < 0.05 & data$Pro_code !="" #cross-sectional analysis
+  vector = (data$pval_raw)*2920*660 < 0.05 & data$Pro_code !="" #longitudinal analysis
+  data_sgni = data[vector,]
+  data_sgni <- distinct(data_sgni, Pro_code, .keep_all = TRUE)
+  if(nrow(data_sgni) == 0){
+    print(paste("Skipping iteration ", i, " due to empty data_sgni_uniq"))
+    next
+  }
+  
+  inputGenes <- data_sgni$Pro_code
+  organism = "Homo Sapiens"
+  ifHeatMap = TRUE
+  rnaSeqSource = 2   #source: GTEx
+  
+  #Tissue enrichment
+  gs<-GeneSet(geneIds=inputGenes, organism=organism, geneIdType=SymbolIdentifier())
+  output<-teEnrichment(inputGenes=gs, rnaSeqDataset=rnaSeqSource)
+  
+  seEnrichmentOutput<-output[[1]]
+  enrichmentOutput<-setNames(data.frame(assay(seEnrichmentOutput),row.names = rowData(seEnrichmentOutput)[,1]), colData(seEnrichmentOutput)[,1])
+  enrichmentOutput$Tissue<-row.names(enrichmentOutput)
+  write.csv(enrichmentOutput,paste0(outfilePath, "/tissueEnrichresult_", input_name, ".csv"))
+}
+
+##2. Tissue enrichment analysis for diseases without significant proteins, using proteins with top 30 smallest p values##
+file_list <- list.files(path=path_to_files, pattern="*.csv", full.names=T)
+
+for (i in 1:length(file_list)) {
+  data <- read.csv(file_list[i])
+
+  file_name <- file_list[i]
+  base_name <- basename(file_name)
+  input_name <- tools::file_path_sans_ext(base_name)
+
+  vector = (data$pval_raw)*2920*406 < 0.05 & data$Pro_code !="" #cross-sectional analysis
+  vector = (data$pval_raw)*2920*660 < 0.05 & data$Pro_code !="" #longitudinal analysis
+  data_sgni = data[vector,]
+  if(nrow(data_sgni) > 0){
+    print(paste0("Significant proteins found in No.", i, ", Skipping enrichment."))
+  }
+  else{
+    data_sgni <- data %>% 
+    arrange(pval_raw) %>% 
+    slice_min(pval_raw, n = 30, with_ties = TRUE)
+  
+    inputGenes <- data_sgni$Pro_code
+    organism = "Homo Sapiens"
+    ifHeatMap = TRUE
+    rnaSeqSource = 2   #source: GTEx
+  
+  #Tissue enrichment
+    gs<-GeneSet(geneIds=inputGenes, organism=organism, geneIdType=SymbolIdentifier())
+    output<-teEnrichment(inputGenes=gs, rnaSeqDataset=rnaSeqSource)
+  
+    seEnrichmentOutput<-output[[1]]
+    enrichmentOutput<-setNames(data.frame(assay(seEnrichmentOutput),row.names = rowData(seEnrichmentOutput)[,1]), colData(seEnrichmentOutput)[,1])
+    enrichmentOutput$Tissue<-row.names(enrichmentOutput)
+    write.csv(enrichmentOutput,paste0(outfilePath, "/tissueEnrichresult_", input_name, ".csv"))
+}
+}

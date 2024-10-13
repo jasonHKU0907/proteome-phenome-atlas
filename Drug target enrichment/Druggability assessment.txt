@@ -1,0 +1,51 @@
+###Overlap with druggable genome###
+prevalent <- read.csv("~/data/prevalent.csv")
+data <- prevalent[,-1]
+data <- unique(data)
+count <- aggregate(data$Protein,by=list(data$Chapter),length)
+colnames(count) <- c("Chapter","Protein")
+sum <- data.frame()
+list <- c(count$Chapter)
+for (i in 1:length(list)) {
+  sub <- count[which(count$Chapter==list[i]),]
+  test <- data[which(data$Chapter==list[i]),]
+  t1 <- test[which(test$druggability_tier=="Tier 1"),]
+  t2 <- test[which(test$druggability_tier=="Tier 2"),]
+  t3 <- test[which(test$druggability_tier=="Tier 3"),]
+  sub$Tier_1 <- nrow(t1)
+  sub$Tier_2 <- nrow(t2)
+  sub$Tier_3 <- nrow(t3)
+  sum <- rbind(sum,sub)
+}
+sum$Unclassified <- sum$Protein-sum$Tier_1-sum$Tier_2-sum$Tier_3
+#Fisher's exact test#
+for (i in 1:length(list)) {
+  sub <- sum[which(sum$Chapter==list[i]),]
+  enrich <- matrix(data = c(sub$Protein-sub$Unclassified,sub$Unclassified,1427,1493),nrow=2)
+  fisher.test(enrich, alternative = "two.sided")
+}
+  
+incident <- read.csv("~/data/incident.csv")
+data <- incident[,-1]
+data <- unique(data)
+count <- aggregate(data$Protein,by=list(data$Chapter),length)
+colnames(count) <- c("Chapter","Protein")
+sum <- data.frame()
+list <- c(count$Chapter)
+for (i in 1:length(list)) {
+    sub <- count[which(count$Chapter==list[i]),]
+    test <- data[which(data$Chapter==list[i]),]
+    t1 <- test[which(test$druggability_tier=="Tier 1"),]
+    t2 <- test[which(test$druggability_tier=="Tier 2"),]
+    t3 <- test[which(test$druggability_tier=="Tier 3"),]
+    sub$Tier_1 <- nrow(t1)
+    sub$Tier_2 <- nrow(t2)
+    sub$Tier_3 <- nrow(t3)
+    sum <- rbind(sum,sub)
+}
+sum$Unclassified <- sum$Protein-sum$Tier_1-sum$Tier_2-sum$Tier_3
+for (i in 1:length(list)) {
+    sub <- sum[which(sum$Chapter==list[i]),]
+    enrich <- matrix(data = c(sub$Protein-sub$Unclassified,sub$Unclassified,1427,1493),nrow=2)
+    fisher.test(enrich, alternative = "two.sided")
+}
