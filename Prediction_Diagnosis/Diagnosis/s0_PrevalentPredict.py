@@ -11,6 +11,13 @@ from joblib import Parallel, delayed
 warnings.filterwarnings('error')
 
 nb_cpus = 10
+nb_params = 100
+my_seed = 2024
+
+def select_params_combo(my_dict, nb_items, my_seed):
+    combo_list = [dict(zip(my_dict.keys(), v)) for v in product(*my_dict.values())]
+    random.seed(my_seed)
+    return random.sample(combo_list, nb_items)
 
 def normal_imp(mydict):
     mysum = sum(mydict.values())
@@ -38,6 +45,25 @@ def get_pro_f_lst(mydf, train_idx, f_lst, my_params):
     tg_imp_df.sort_values(by = 'TotalGain', inplace = True, ascending = False)
     return tg_imp_df.Pro_code.tolist()[:30]
 
+def get_best_params(mydf, pro_f_lst, fold_id_lst, my_params_lst):
+    for my_params in my_params_lst:
+        auc_cv_lst = []
+        my_params0 = my_params.copy()
+        for fold_id in fold_id_lst:
+            train_idx = mydf['Split'].index[mydf['Split'] != fold_id]
+            test_idx = mydf['Split'].index[mydf['Split'] == fold_id]
+            X_train, y_train = mydf.iloc[train_idx][pro_f_lst], mydf.iloc[train_idx].target_y
+            X_test, y_test = mydf.iloc[test_idx][pro_f_lst], mydf.iloc[test_idx].target_y
+            my_lgb = LGBMClassifier(objective='binary', metric='auc', is_unbalance=True, seed=my_seed)
+            my_lgb.set_params(**my_params0)
+            my_lgb.fit(X_train, y_train)
+            y_pred_prob = my_lgb.predict_proba(X_test)[:, 1]
+            auc_cv_lst.append(roc_auc_score(y_test, y_pred_prob))
+        my_params0['AUC_cv_MEAN'] = np.round(np.mean(auc_cv_lst), 5)
+    my_params0.sort_values(by = 'AUC_cv_MEAN', ascending = False, inplace = True)
+    best_param = get_dict(my_params0.iloc[0,:6])
+    return best_param
+    
 def model_training(mydf, train_idx, test_idx, f_lst, my_params):
     X_train, X_test = mydf.iloc[train_idx][f_lst], mydf.iloc[test_idx][f_lst]
     y_train = mydf.iloc[train_idx].target_y
@@ -51,6 +77,9 @@ def get_iter_predictions(mydf, full_pro_f_lst, cov_f_lst, fold_id, my_params0, m
     train_idx = mydf['Region_code'].index[mydf['Region_code'] != fold_id]
     test_idx = mydf['Region_code'].index[mydf['Region_code'] == fold_id]
     pro_f_lst = get_pro_f_lst(mydf, train_idx, full_pro_f_lst, my_params0)
+    my_params_pro = get_best_params(mydf, pro_f_lst, inner_fold_id_lst, candidate_params_lst)
+    my_params_cov = get_best_params(mydf, cov_f_lst, inner_fold_id_lst, candidate_params_lst)
+    my_params_pro_cov = get_best_params(mydf, cov_f_lst + pro_f_lst, inner_fold_id_lst, candidate_params_lst)
     y_pred_pro, lgb_pro = model_training(mydf, train_idx, test_idx, pro_f_lst, my_params)
     y_pred_cov, lgb_cov = model_training(mydf, train_idx, test_idx, cov_f_lst, my_params)
     y_pred_pro_cov, lgb_pro_cov = model_training(mydf, train_idx, test_idx, cov_f_lst + pro_f_lst, my_params)
@@ -67,6 +96,15 @@ def get_iter_predictions(mydf, full_pro_f_lst, cov_f_lst, fold_id, my_params0, m
     tc_imp_cv = Counter(normal_imp(totalcover_imp))
     return (tg_imp_cv, tc_imp_cv, eid_lst, y_test_lst, y_pred_pro_lst, y_pred_cov_lst, y_pred_pro_cov_lst)
 
+
+params_dict = {'n_estimators': [100, 200, 300, 400, 500],
+               'max_depth': np.linspace(5, 30, 6).astype('int32').tolist(),
+               'num_leaves': np.linspace(5, 30, 6).astype('int32').tolist(),
+               'subsample': np.linspace(0.6, 1, 9).tolist(),
+               'learning_rate': [0.1, 0.05, 0.01, 0.001],
+               'colsample_bytree': np.linspace(0.6, 1, 9).tolist()}
+
+candidate_params_lst = select_params_combo(params_dict, nb_params, my_seed)
 
 dpath = '/home1/jiayou/Documents/Projects/ProDisAtlas/'
 #dpath = '/Volumes/JasonWork/Projects/ProDisAtlas/'
